@@ -2,7 +2,6 @@
 import socket
 from selectors2 import DefaultSelector, EVENT_READ, EVENT_WRITE
 import time
-import math
 
 url = 'xkcd.com'
 
@@ -28,7 +27,7 @@ class Crawler(object):
         self.sock.setblocking(False)
         try:
             self.sock.connect((self.url, 80))
-        except:
+        except IOError:
             pass
         selector.register(self.sock.fileno(), EVENT_WRITE, self.connected)
 
