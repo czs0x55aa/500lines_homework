@@ -20,7 +20,7 @@ class Crawler(object):
     def __init__(self, url):
         self.url = url
         self.sock = None
-        self.response = ''
+        self.response = b''
 
     def fetch(self):
         self.sock = socket.socket()

@@ -24,10 +24,14 @@ class Future(object):
     def add_done_callback(self, fn):
         self._callbacks.append(fn)
 
-    def set_result(self, result):
+    def set_result(self, result=None):
         self.result = result
         for fn in self._callbacks:
             fn(self)
+
+    def __iter__(self):
+        yield self
+        return self.result
 
 class Task(object):
     def __init__(self, coro):
@@ -43,6 +47,40 @@ class Task(object):
             return
         next_future.add_done_callback(self.step)
 
+def connect(sock, address):
+    f = Future()
+    sock.setblocking(False)
+    try:
+        sock.connect(address)
+    except IOError:
+        pass
+
+    def on_connected():
+        f.set_result(None)
+
+    selector.register(sock.fileno(), EVENT_WRITE, on_connected)
+    yield from f
+    selector.unregister(sock.fileno())
+
+def read(sock):
+    f = Future()
+
+    def on_readable():
+        f.set_result(sock.recv(4096))
+
+    selector.register(sock.fileno(), EVENT_READ, on_readable)
+    chunk = yield from f
+    selector.unregister(sock.fileno())
+    return chunk
+
+def read_all(sock):
+    response = []
+    chunk = yield from read(sock)
+    while chunk:
+        response.append(str(chunk))
+        chunk = yield from read(sock)
+    return ''.join(response)
+
 class Crawler(object):
     def __init__(self, url):
         self.url = url
@@ -50,39 +88,14 @@ class Crawler(object):
 
     def fetch(self):
         sock = socket.socket()
-        sock.setblocking(False)
-        try:
-            sock.connect((self.url, 80))
-        except IOError:
-            pass
-        f = Future()
-
-        def on_connected():
-            f.set_result(None)
-
-        selector.register(sock.fileno(), EVENT_WRITE, on_connected)
-        yield f
-        selector.unregister(sock.fileno())
+        yield from connect(sock, (self.url, 80))
         request = 'GET {} HTTP/1.0\r\nHost: xkcd.com\r\n\r\n'.format(self.url)
         sock.send(request.encode('ascii'))
-
-        while True:
-            f = Future()
-
-            def on_readable():
-                f.set_result(sock.recv(4096))
-
-            selector.register(sock.fileno(), EVENT_READ, on_readable)
-            chunk = yield f
-            selector.unregister(sock.fileno())
-            if chunk:
-                self.response += chunk
-            else:
-                global res, stopped
-                res.append(self.response)
-                if len(res) >= 10:
-                    stopped = True
-                break
+        self.response = yield from read_all(sock)
+        global res, stopped
+        res.append(self.response)
+        if len(res) >= 10:
+            stopped = True
 
 @log_time
 def loop():
