@@ -59,7 +59,7 @@ def connect(sock, address):
         f.set_result(None)
 
     selector.register(sock.fileno(), EVENT_WRITE, on_connected)
-    yield from f
+    yield f
     selector.unregister(sock.fileno())
 
 def read(sock):
@@ -69,7 +69,7 @@ def read(sock):
         f.set_result(sock.recv(4096))
 
     selector.register(sock.fileno(), EVENT_READ, on_readable)
-    chunk = yield from f
+    chunk = yield f
     selector.unregister(sock.fileno())
     return chunk
 
@@ -77,14 +77,29 @@ def read_all(sock):
     response = []
     chunk = yield from read(sock)
     while chunk:
-        response.append(str(chunk))
+        response.append(chunk)
         chunk = yield from read(sock)
-    return ''.join(response)
+    return b''.join(response)
+
+# def read_all(sock):
+#     response = []
+#     def on_readable():
+#         f.set_result(sock.recv(4096))
+#     chunk = True
+#     while chunk:
+#         f = Future()
+#         selector.register(sock.fileno(), EVENT_READ, on_readable)
+#         chunk = yield f
+#         selector.unregister(sock.fileno())
+#         if chunk:
+#             response.append(chunk)
+#     return b''.join(response)
 
 class Crawler(object):
-    def __init__(self, url):
+    def __init__(self, url, id):
         self.url = url
         self.response = b''
+        self.id = id
 
     def fetch(self):
         sock = socket.socket()
@@ -100,7 +115,7 @@ class Crawler(object):
 @log_time
 def loop():
     for i in range(10):
-        crawler = Crawler(url)
+        crawler = Crawler(url, i)
         Task(crawler.fetch())
     while not stopped:
         events = selector.select()
